@@ -25,3 +25,24 @@ Welcome to the Telegram Book Exchange Bot! This bot, written in Python, is desig
 
    ```bash
    git clone https://github.com/your-username/telegram-book-exchange-bot.git
+2. install dependancies
+    ```bash
+    cd telegram-book-exchange-bot
+    pip install -r requirements.txt
+3. Set Up Configuration:
+  - Create a config.py file based on the provided config.example.py template.
+  - Replace YOUR_BOT_TOKEN with the token obtained from BotFather.
+4. run the bot
+    ```bash
+    python main.py
+
+## usage
+1. Start a chat with the bot on Telegram.
+2. Use the /start command to initiate the bot.
+3. Explore available commands for buying, selling, and searching for books.
+4. Follow the prompts to complete transactions.
+
+
+## License
+This project is licensed under the MIT License.
+
