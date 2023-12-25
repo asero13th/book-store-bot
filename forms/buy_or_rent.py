@@ -2,7 +2,7 @@
 this module will hold book form"""
 from aiogram.fsm.state import State, StatesGroup
 
-class Book(StatesGroup):
+class Buy(StatesGroup):
     book_id = State()
     title = State()
     date  = State()

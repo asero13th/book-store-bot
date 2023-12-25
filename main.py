@@ -10,19 +10,19 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from aiogram.enums import ParseMode
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram import Bot,Dispatcher
-from dotenv import load_dotenv
-from aiogram.fsm.state import State, StatesGroup
+
 from aiogram.types import (
-   
-    Message,
     InlineKeyboardButton,
-    InlineKeyboardMarkup
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton
 )
 
 from aiogram.types import CallbackQuery
+from dotenv import load_dotenv
 from callbacks.my_callback import MyCallback
 from forms.book import Book
+from forms.customer import Customer
 
 load_dotenv()
 form_router = Router()
@@ -31,31 +31,34 @@ bot = Bot(TOKEN, parse_mode="HTML")
 dp = Dispatcher()
 
 @form_router.message(CommandStart())
-async def start(message: Message, state : FSMContext) -> None:   
+async def start(message: Message) -> None:
     """
     This function handles the /start command.
     """
-    user = "admin"
+    user = "adminfhf"
     menu =InlineKeyboardMarkup (
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="Buy Book", callback_data=MyCallback(name="buy_book", id="1").pack()),
                 InlineKeyboardButton(text="Rent Book", callback_data=MyCallback(name="rent_book", id="2").pack()),
+            ],
+            [
                 InlineKeyboardButton(text="Sell Book", callback_data=MyCallback(name="sell_book", id="3").pack()),
-                
+                InlineKeyboardButton(text="Order new", callback_data=MyCallback(name="order_book", id="4").pack()),
             ]
-        ], resize_keyboard=True
+            ], resize_keyboard=True
     )
     if user == "admin":
         menu.inline_keyboard.append([
           InlineKeyboardButton(text="orders", callback_data=MyCallback(name="order", id="4").pack()),  
         ])
-    await message.answer("welcome to ብርሀን መፅሐፍ", reply_markup=menu)
+    await message.answer("welcome to ብርሀን መፅሐፍ ማከፋፈያ", reply_markup=menu)
 @form_router.callback_query(MyCallback.filter(F.name == "rent_book"))
 async def rent_book(query: CallbackQuery, state: FSMContext) -> None:
     """
     This function will be handled when the rent book is entered
     """
+    await state.update_data(service_type="rent")
     await query.message.delete()
     menu = InlineKeyboardMarkup(
         inline_keyboard= [
@@ -90,6 +93,7 @@ async def buy_book(query: CallbackQuery, state: FSMContext) -> None:
     This function will be handled when the buy book is entered
     """
     await query.message.delete()
+    await state.update_data(service_type="buy")
     menu = InlineKeyboardMarkup(
         inline_keyboard= [
             [
@@ -149,7 +153,7 @@ async def process_catagory(query: CallbackQuery, callback_data: MyCallback) -> N
         await query.message.answer("choose the book", reply_markup=menu)
 
 @form_router.callback_query(MyCallback.filter(F.name == "book"))
-async def process_book(query: CallbackQuery, state: FSMContext, callback_data: MyCallback) -> None:
+async def process_book(query: CallbackQuery, callback_data: MyCallback) -> None:
     """
     this function will be handled when the book is entered"""
     await query.message.delete()
@@ -168,12 +172,88 @@ async def process_book(query: CallbackQuery, state: FSMContext, callback_data: M
     book = cursor.fetchone()
     conn.close()
 
-    text = f'title: {book[1]}\nauthor: {book[2]}\ndate: {book[4]}\nprice: {book[8]}\nstatus: {book[9]}\n\n{book[5]} \n contact: @SilentERr \n call : +251953933492'
+    text = f'title: {book[1]}\nauthor: {book[2]}\ndate: {book[4]}\nprice: {book[8]}\nstatus: {book[9]}\noverview: {book[5]} \ncontact: @SilentERr\ncall : +251953933492'
     await query.message.answer_photo(
-        photo=book[3],caption=f'{text}'
+        photo=book[3],caption=f'{text}',reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                InlineKeyboardButton(text="buy this book", callback_data=MyCallback(name="buy_this_book", id=book[0]).pack()),
+                InlineKeyboardButton(text="back", callback_data=MyCallback(name="back", id=book[0]).pack())
+                ]
+            ]
+        )
     )
 
+@form_router.callback_query(MyCallback.filter(F.name == "buy_this_book"))
+async def buy_this_book(query: CallbackQuery, state: FSMContext, callback_data: MyCallback) -> None:
+    """
+    this function will be handled when the buy is entered"""
+    await query.message.delete()
+    await state.update_data(book_id=callback_data.id)
+    await state.set_state(Book.name)
+    await query.message.answer("Enter your full name please?")
 
+@form_router.message(Book.name)
+async def customer_name(message: Message, state: FSMContext) -> None:
+    """
+    this function will handle the name of the customer"""
+    await state.update_data(name=message.text)
+    await state.set_state(Book.phone)
+    await message.answer("enter your phone number", reply_markup=ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="share your phone", request_contact=True)
+            ]
+        ], resize_keyboard=True, one_time_keyboard=True
+    ))
+
+@form_router.message(Book.phone)
+async def customer_phone(message: Message, state: FSMContext) -> None:
+    """
+    this function will handle the phone of the customer"""
+    await state.update_data(phone=message.contact.phone_number)
+    await state.set_state(Book.location)
+    await message.answer("enter your location or share your location", reply_markup=ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="share your location", request_location=True)
+            ]
+        ],resize_keyboard=True, one_time_keyboard=True
+    ))
+
+@form_router.message(Book.location)
+async def customer_location(message: Message, state: FSMContext) -> None:
+    """
+    this function will handle the location of the customer"""
+    await state.update_data(location=message.text)
+    await state.set_state(Book.address)
+    await message.answer("enter your specific address")
+
+@form_router.message(Book.address)
+async def customer_address(message: Message, state: FSMContext) -> None:
+    """
+    this function will handle the address of the customer"""
+    await state.update_data(address=message.text)
+    buyer_data = await state.get_data()
+    conn = sqlite3.connect('bookstore.db')
+    cursor = conn.cursor()
+
+    cursor.execute(
+     # i want to insert the order in orders database
+        """
+        INSERT INTO orders (book_id, name, phone, location, address,type)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            buyer_data['book_id'],
+            buyer_data['name'],
+            buyer_data['phone'],
+            buyer_data['location'],
+            buyer_data['address'],
+            buyer_data['service_type']
+        )
+    )
+    
 @form_router.callback_query(MyCallback.filter(F.name == "sell_book"))
 async def sell_book(query: CallbackQuery, state: FSMContext) -> None:
     """

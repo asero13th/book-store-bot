@@ -28,17 +28,17 @@ cursor.execute(
 cursor.execute(
     '''
     CREATE TABLE IF NOT EXISTS orders (
-        order_id INTEGER PRIMARY KEY,
+        order_id INTEGER AUTO_INCREMENT PRIMARY KEY,
         book_id INTEGER,
         username TEXT,
         name TEXT,
         phone_number TEXT,
         location TEXT,
         address TEXT,
+        type TEXT,
         FOREIGN KEY (book_id) REFERENCES books(book_id)
     )
     '''
 )
-
 conn.commit()
 conn.close()
