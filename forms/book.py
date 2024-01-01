@@ -21,9 +21,25 @@ class Book(StatesGroup):
     buy = State()
     rent = State()
 
-    # this is a class for customer who will buy or rent the book
+    # this is a class for customer who will sell their book
     name  = State()
     phone =  State()
     location = State()
     address = State()
+    
+    username = State()
+    status = State()
+
+    # this is a class for customer who will buy or rent the book
+    buyer_name  = State()
+    buyer_phone =  State()
+    buyer_address = State()
     service_type = State()
+
+    #this is a states when customer want to order a new book
+    new_order_title = State()
+    new_order_author = State()
+    new_order_phone = State()
+    new_order_type = State()
+    new_order_name = State()
+
