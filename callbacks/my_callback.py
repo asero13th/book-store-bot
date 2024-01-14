@@ -6,4 +6,4 @@ class MyCallback(CallbackData, prefix="my"):
     my call back class 
     """
     name: str
-    id:int
+    id:str

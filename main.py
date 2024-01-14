@@ -5,6 +5,9 @@ import asyncio
 import logging
 import sys
 import sqlite3
+import firebase_admin
+
+from firebase_admin import credentials, firestore
 from aiogram.filters import  CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -24,6 +27,11 @@ from dotenv import load_dotenv
 from callbacks.my_callback import MyCallback
 from forms.book import Book
 
+# this is firebase configuration
+cred = credentials.Certificate("firebase-admin.json")
+firebase_admin.initialize_app(cred)
+
+db = firestore.client()
 
 load_dotenv()
 form_router = Router()
@@ -36,7 +44,7 @@ async def start(message: Message) -> None:
     """
     This function handles the /start command.
     """
-    print(message.from_user.id)
+  
     user = " not admin"
     menu =InlineKeyboardMarkup (
         inline_keyboard=[
@@ -122,24 +130,18 @@ async def new_order_phone(message: Message, state: FSMContext) -> None:
     await state.update_data(new_order_phone = message.contact.phone_number)
     data = await state.get_data()
 
-    conn = sqlite3.connect("bookstore.db")
-    cursor = conn.cursor()
+    new_order = {
+        'name': data["new_order_name"],
+        'phone_number': data["new_order_phone"],
+        'location': "Addis Ababa",
+        'address': "Addis Ababa",
+        'book_title': data["new_order_title"],
+        'author': data["new_order_author"],
+        'type': "new"  # Set the 'type' field to "new"
+    }
 
-    cursor.execute(
-        '''
-        INSERT INTO carts(name, phone_number, location, address, book_title, author) VALUES (?, ?, ?, ?, ?, ?)
-        ''',
-        (
-            data["new_order_name"],
-            data["new_order_phone"],
-            "",
-            "",
-            data["new_order_title"],
-            data["new_order_author"]
-        )
-    )
-    conn.commit()
-    conn.close()
+    # Add the new order to the 'orders' collection
+    db.collection('orders').add(new_order)
     
     await message.answer("Order added successfully", reply_markup=InlineKeyboardMarkup(
         inline_keyboard=[
@@ -149,13 +151,12 @@ async def new_order_phone(message: Message, state: FSMContext) -> None:
         ]
     ))
 
-
 @form_router.callback_query(MyCallback.filter(F.name == "back"))
 async def mainmenu(query: CallbackQuery) -> None:
     """
     this function will be called when the back button is entered
     """
-    user = "admin"
+
     menu =InlineKeyboardMarkup (
         inline_keyboard=[
             [
@@ -168,10 +169,7 @@ async def mainmenu(query: CallbackQuery) -> None:
             ]
             ], resize_keyboard=True
     )
-    if user == "admin":
-        menu.inline_keyboard.append([
-          InlineKeyboardButton(text="orders", callback_data=MyCallback(name="orders", id="4").pack()),  
-        ])
+  
 
     await query.message.delete()
     await query.message.answer("welcome to ብርሀን መፅሐፍ ማከፋፈያ", reply_markup=menu)
@@ -297,41 +295,35 @@ async def buy_book(query: CallbackQuery, state: FSMContext) -> None:
     )
     await query.message.answer("select catagory of the book you want to buy", reply_markup=menu)
 
-@form_router.callback_query(MyCallback.filter(F.id == 10))
+@form_router.callback_query(MyCallback.filter(F.id == "10"))
 async def process_catagory(query: CallbackQuery, callback_data: MyCallback, state: FSMContext) -> None:
     """
     This function will be handled when the catagory is entered
     """
     await query.message.delete()
-    conn = sqlite3.connect('bookstore.db')
-    cursor = conn.cursor()
-    request = "SELECT * FROM books WHERE genre = ?" if callback_data.name != "all_book" else "SELECT * FROM books"
-    print(request)
-    if callback_data.name != "all_book":
-        cursor.execute(
-       request, (callback_data.name,)
-        )
+    # Get the genre from the callback data
+    genre = callback_data.name
+    # If the genre is not "all_book", add a condition to the query
+    if genre != "all_book":
+        books_collection_ref = db.collection('books').where('genre', '==', genre)
     else:
-        cursor.execute(request)
+        books_collection_ref = db.collection('books')
 
-
-    books = cursor.fetchall()
-    conn.close()
+    docs = books_collection_ref.stream()
 
     menu = InlineKeyboardMarkup(
+        
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=f'{books[i][1]}', callback_data=MyCallback(name="book", id=books[i][0]).pack()),
-                InlineKeyboardButton(text=f'{books[i + 1][1]}', callback_data=MyCallback(name="book", id=books[i + 1][0]).pack()) if i + 1 < len(books) else InlineKeyboardButton(text=f'{books[i][1]}', callback_data=MyCallback(name="book", id=books[i][0]).pack())
-            ] for i in range(0, len(books), 2)
+                InlineKeyboardButton(text=f'{doc.to_dict()["title"]}', callback_data=MyCallback(name="book", id=doc.id).pack()),
+            ] for doc in docs
         ]
     )
     data = await state.get_data()
-
-    if not books:
-        await query.message.answer("no books found with this category")
-    else:
-        await query.message.answer(f"select the book you want to {data['service_type']}", reply_markup=menu)
+    if not data:
+        await query.message.answer("no book found")
+        return
+    await query.message.answer(f"select the book you want to {data['service_type']}", reply_markup=menu)
 
 @form_router.callback_query(MyCallback.filter(F.name == "book"))
 async def process_book(query: CallbackQuery, callback_data: MyCallback, state: FSMContext) -> None:
@@ -341,28 +333,27 @@ async def process_book(query: CallbackQuery, callback_data: MyCallback, state: F
     await query.message.delete()
     book_id = callback_data.id
 
-    conn = sqlite3.connect('bookstore.db')
-    cursor = conn.cursor()
+    # Get a reference to the book document
+    book_ref = db.collection('books').document(book_id)
 
-    cursor.execute(
-        """
-        SELECT * FROM books WHERE book_id = ?
-        """,
-        (book_id,)
-    )
+    # Get the book document
+    book = book_ref.get()
+  
     
-    book = cursor.fetchone()
-    conn.close()
+    if not book:
+        await query.message.answer("book not found")
+        return
+    book = book.to_dict()
+    text = f'title: {book["title"]}\nauthor: {book["author"]}\nedition: {book["date"]}\nprice: {book["price"]}\nstatus: {book["book_status"]}\noverview: {book["overview"]} \ncontact: @SilentERr\ncall : +251953933492'
 
-    text = f'title: {book[1]}\nauthor: {book[2]}\ndate: {book[4]}\nprice: {book[8]}\nstatus: {book[9]}\noverview: {book[5]} \ncontact: @SilentERr\ncall : +251953933492'
     data = await state.get_data()
-    await query.message.answer_photo(
-        photo=book[3],caption=f'{text}',reply_markup=InlineKeyboardMarkup(
+
+    await query.message.answer(f'{text}',reply_markup=InlineKeyboardMarkup(
             inline_keyboard=
             [
                 [
-                InlineKeyboardButton(text="buy this book", callback_data=MyCallback(name="buy_this_book", id=book[0]).pack()) if data['service_type'] == "buy" else InlineKeyboardButton(text="rent this book", callback_data=MyCallback(name="buy_this_book", id=book[0]).pack()),    
-                InlineKeyboardButton(text="back", callback_data=MyCallback(name="back", id=book[0]).pack())
+                InlineKeyboardButton(text="buy this book", callback_data=MyCallback(name="buy_this_book", id=callback_data.id).pack()) if data['service_type'] == "buy" else InlineKeyboardButton(text="rent this book", callback_data=MyCallback(name="buy_this_book", id=callback_data.id).pack()),    
+                InlineKeyboardButton(text="back", callback_data=MyCallback(name="back", id=callback_data.id).pack())
                 ]
             ]
         )
@@ -375,6 +366,15 @@ async def buy_this_book(query: CallbackQuery, state: FSMContext, callback_data: 
     await query.message.delete()
     await state.update_data(book_id=callback_data.id)
     await state.set_state(Book.buyer_name)
+
+    # Get a reference to the book document
+    book_ref = db.collection('books').document(callback_data.id)
+
+    # Get the book document
+    book = book_ref.get()
+    book = book.to_dict()
+    await state.update_data(buyer_book_title=book["title"])
+
     await query.message.answer("Enter your full name please?")
 
 @form_router.message(Book.buyer_name)
@@ -413,7 +413,6 @@ async def customer_phone(message: Message, state: FSMContext) -> None:
 #     await state.set_state(Book.location)
 #     await message.answer("enter or share your location please!")
 
-
 @form_router.message(Book.buyer_address)
 async def customer_address(message: Message, state: FSMContext) -> None:
     """
@@ -421,27 +420,18 @@ async def customer_address(message: Message, state: FSMContext) -> None:
     await state.update_data(buyer_address=message.text)
     await state.set_state(Book.finish)
     buyer_data = await state.get_data()
-    conn = sqlite3.connect('bookstore.db')
-    cursor = conn.cursor()
+    
+    new_order = {   
+        'book_id': buyer_data['buyer_book_title'],
+        'username': message.from_user.username,
+        'name': buyer_data['buyer_name'],
+        'phone_number': buyer_data['buyer_phone'],
+        'location': buyer_data['buyer_address'],
+        'address': buyer_data['buyer_address'],
+        'type': buyer_data['service_type']
+    }
 
-    cursor.execute(
-     # i want to insert the another_order in orders database
-        """
-        INSERT INTO orders (book_id, username,name, phone_number, location, address,type)
-        VALUES (?, ?, ?, ?, ?,?,?)
-        """,
-        (
-            buyer_data['book_id'],
-            message.from_user.username,
-            buyer_data['buyer_name'],
-            buyer_data['buyer_phone'],
-            buyer_data['buyer_address'],
-            buyer_data['buyer_address'],
-            buyer_data['service_type']
-        )
-    )
-    conn.commit()
-    conn.close()
+    db.collection('orders').add(new_order)
 
     await message.answer("order added successfully", reply_markup=InlineKeyboardMarkup(
         inline_keyboard=[
@@ -450,7 +440,6 @@ async def customer_address(message: Message, state: FSMContext) -> None:
             ]
         ]
     ))
-
 
 @form_router.callback_query(MyCallback.filter(F.name == "sell_book"))
 async def sell_book(query: CallbackQuery, state: FSMContext) -> None:
@@ -510,26 +499,20 @@ async def book_date(message: Message, state: FSMContext) -> None:
     await state.update_data(date=message.text)
     book_data = await state.get_data()
 
-    conn = sqlite3.connect('bookstore.db')
-    cursor = conn.cursor()
+    
+        # Create a new sell
+    new_sell = {
+        'title': book_data['title'],
+        'author': "unknown",
+        'image': book_data["image"],
+        'status': book_data["date"],
+        'price': book_data["price"],
+        'phone': book_data["phone"],
+    }
 
-    cursor.execute(
-        """
-        INSERT INTO sells (title, author, image, status, price, phone)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            book_data['title'],
-            "unknown",
-            book_data["image"] ,
-            book_data["date"] ,
-            book_data["price"] ,
-            book_data["phone"] ,
-            )
-    )
+    # Add the new sell to the 'sells' collection
+    db.collection('sells').add(new_sell)
 
-    conn.commit()
-    conn.close()
 
     await message.answer("book added successfully, the admin will contact you", reply_markup=InlineKeyboardMarkup(
         inline_keyboard=[
@@ -602,7 +585,7 @@ async def finish(message: Message, state: FSMContext) -> None:
     """
     this function will be handled when the finish is entered"""
     await message.delete()
-    user = "admin"
+  
     menu =InlineKeyboardMarkup (
         inline_keyboard=[
             [
@@ -615,10 +598,7 @@ async def finish(message: Message, state: FSMContext) -> None:
             ]
             ], resize_keyboard=True
     )
-    if user == "admin":
-        menu.inline_keyboard.append([
-          InlineKeyboardButton(text="orders", callback_data=MyCallback(name="orders", id="4").pack()),  
-        ])
+   
     await message.answer("Invalid input please select from the menu", reply_markup=menu)
 
 async def main():

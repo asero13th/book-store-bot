@@ -35,6 +35,7 @@ class Book(StatesGroup):
     buyer_phone =  State()
     buyer_address = State()
     service_type = State()
+    buyer_book_title = State()
 
     #this is a states when customer want to order a new book
     new_order_title = State()
