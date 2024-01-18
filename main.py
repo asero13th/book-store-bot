@@ -79,6 +79,7 @@ async def command_cancel(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Cancelled.",
         reply_markup=ReplyKeyboardRemove(),
+    
     )
 
 @form_router.callback_query(MyCallback.filter(F.name == "order_book"))
@@ -260,6 +261,9 @@ async def rent_book(query: CallbackQuery, state: FSMContext) -> None:
             ],
             [
                 InlineKeyboardButton(text="view all book", callback_data=MyCallback(name="all_book", id="10").pack())
+            ],
+            [
+                InlineKeyboardButton(text="Back", callback_data=MyCallback(name="back", id="1").pack()),
             ]
         ]
     )
@@ -290,6 +294,9 @@ async def buy_book(query: CallbackQuery, state: FSMContext) -> None:
             ],
             [
                 InlineKeyboardButton(text="view all book", callback_data=MyCallback(name="all_book", id="10").pack())
+            ],
+            [
+                InlineKeyboardButton(text="Back", callback_data=MyCallback(name="back", id="1").pack()),
             ]
         ]
     )
