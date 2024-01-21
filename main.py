@@ -404,13 +404,7 @@ async def customer_phone(message: Message, state: FSMContext) -> None:
     this function will handle the phone of the customer"""
     await state.update_data(buyer_phone=message.contact.phone_number)
     await state.set_state(Book.buyer_address)
-    await message.answer("enter your location or share your location", reply_markup=ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="share your location", request_location=True)
-            ]
-        ],resize_keyboard=True, one_time_keyboard=True
-    ))
+    await message.answer("Enter your block and room number", reply_markup=ReplyKeyboardRemove())
     
 # @form_router.message(Book.username)
 # async def customer_username(message: Message, state: FSMContext) -> None:
