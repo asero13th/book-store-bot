@@ -324,8 +324,12 @@ async def process_catagory(query: CallbackQuery, callback_data: MyCallback, stat
             [
                 InlineKeyboardButton(text=f'{doc.to_dict()["title"]}', callback_data=MyCallback(name="book", id=doc.id).pack()),
             ] for doc in docs
-        ]
+        ]   
     )
+
+    menu.inline_keyboard.append([
+        InlineKeyboardButton(text="back", callback_data=MyCallback(name="back", id="1").pack())
+    ])
     data = await state.get_data()
     if not data:
         await query.message.answer("no book found")
@@ -596,7 +600,8 @@ async def finish(message: Message, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(text="Sell Book", callback_data=MyCallback(name="sell_book", id="3").pack()),
                 InlineKeyboardButton(text="Order new", callback_data=MyCallback(name="order_book", id="4").pack()),
-            ]
+            ],
+           
             ], resize_keyboard=True
     )
    
